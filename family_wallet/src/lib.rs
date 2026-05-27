@@ -755,11 +755,12 @@ impl FamilyWallet {
     pub fn sign_transaction(env: Env, signer: Address, tx_id: u64) -> Result<bool, Error> {
         signer.require_auth();
         Self::require_not_paused(&env);
-        Self::require_role_at_least(&env, &signer, FamilyRole::Member);
 
         if !Self::is_family_member(&env, &signer) {
-            return Err(Error::Unauthorized);
+            return Err(Error::SignerNotMember);
         }
+        Self::require_role_at_least(&env, &signer, FamilyRole::Member);
+
 
         Self::extend_instance_ttl(&env);
 
