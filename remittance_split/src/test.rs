@@ -88,21 +88,26 @@ fn test_distribution_completed_event() {
     );
 
     let events = env.events().all();
-    let last_event = events.last().expect("no events emitted");
-    let (_, topics, data) = last_event;
+    let last_event = events.last();
+    assert!(last_event.is_some(), "no events emitted");
 
-    assert_eq!(topics.len(), 4);
+    if let Some(event_tuple) = last_event {
+        let (_, topics, data) = event_tuple;
+        assert_eq!(topics.len(), 4);
 
-    let event: DistributionCompletedEvent = DistributionCompletedEvent::try_from_val(&env, &data)
-        .expect("failed to decode distribution event");
+        let event_result: Result<DistributionCompletedEvent, _> = DistributionCompletedEvent::try_from_val(&env, &data);
+        assert!(event_result.is_ok(), "failed to decode distribution event");
 
-    assert_eq!(event.from, owner);
-    assert_eq!(event.total_amount, total_amount);
-    assert_eq!(event.spending_amount, 400);
-    assert_eq!(event.savings_amount, 300);
-    assert_eq!(event.bills_amount, 200);
-    assert_eq!(event.insurance_amount, 100);
-    assert_eq!(event.timestamp, env.ledger().timestamp());
+        if let Ok(event) = event_result {
+            assert_eq!(event.from, owner);
+            assert_eq!(event.total_amount, total_amount);
+            assert_eq!(event.spending_amount, 400);
+            assert_eq!(event.savings_amount, 300);
+            assert_eq!(event.bills_amount, 200);
+            assert_eq!(event.insurance_amount, 100);
+            assert_eq!(event.timestamp, env.ledger().timestamp());
+        }
+    }
 }
 
 #[test]
@@ -136,10 +141,13 @@ fn test_distribution_event_topic_correctness() {
     let events = env.events().all();
     let dist_comp_event = events
         .iter()
-        .find(|event| event.1.len() == 4)
-        .expect("distribution completed event not found");
+        .find(|event| event.1.len() == 4);
 
-    assert_eq!(dist_comp_event.1.len(), 4);
+    assert!(dist_comp_event.is_some(), "distribution completed event not found");
+
+    if let Some(event) = dist_comp_event {
+        assert_eq!(event.1.len(), 4);
+    }
 }
 
 #[test]
@@ -312,12 +320,19 @@ fn test_execute_due_remittance_schedules_basic() {
     // Execute due schedules
     let executed = client.execute_due_remittance_schedules();
     assert_eq!(executed.len(), 1);
-    assert_eq!(executed.get(0).unwrap(), 1);
+    let first_executed = executed.get(0);
+    assert!(first_executed.is_some());
+    if let Some(id) = first_executed {
+        assert_eq!(id, 1);
+    }
 
     // Verify schedule is now inactive (one-off)
-    let schedule = client.get_remittance_schedule(&1).unwrap();
-    assert!(!schedule.active);
-    assert_eq!(schedule.last_executed, Some(3_500));
+    let schedule_result = client.get_remittance_schedule(&1);
+    assert!(schedule_result.is_some());
+    if let Some(schedule) = schedule_result {
+        assert!(!schedule.active);
+        assert_eq!(schedule.last_executed, Some(3_500));
+    }
 }
 
 #[test]
@@ -337,14 +352,21 @@ fn test_execute_recurring_remittance_schedule() {
     let executed = client.execute_due_remittance_schedules();
 
     assert_eq!(executed.len(), 1);
-    assert_eq!(executed.get(0).unwrap(), 1);
+    let first_executed = executed.get(0);
+    assert!(first_executed.is_some());
+    if let Some(id) = first_executed {
+        assert_eq!(id, 1);
+    }
 
     // Verify next_due was advanced by interval
-    let schedule = client.get_remittance_schedule(&1).unwrap();
-    assert!(schedule.active);
-    assert_eq!(schedule.next_due, 3_000 + 86_400);
-    assert_eq!(schedule.last_executed, Some(3_500));
-    assert_eq!(schedule.missed_count, 0);
+    let schedule_result = client.get_remittance_schedule(&1);
+    assert!(schedule_result.is_some());
+    if let Some(schedule) = schedule_result {
+        assert!(schedule.active);
+        assert_eq!(schedule.next_due, 3_000 + 86_400);
+        assert_eq!(schedule.last_executed, Some(3_500));
+        assert_eq!(schedule.missed_count, 0);
+    }
 }
 
 #[test]
@@ -366,10 +388,13 @@ fn test_execute_missed_remittance_schedules() {
     assert_eq!(executed.len(), 1);
 
     // Verify missed_count is 3 (the three intervals that were skipped)
-    let schedule = client.get_remittance_schedule(&1).unwrap();
-    assert_eq!(schedule.missed_count, 3);
-    assert!(schedule.next_due > 3_000 + 86_400 * 3);
-    assert_eq!(schedule.last_executed, Some(3_000 + 86_400 * 3 + 100));
+    let schedule_result = client.get_remittance_schedule(&1);
+    assert!(schedule_result.is_some());
+    if let Some(schedule) = schedule_result {
+        assert_eq!(schedule.missed_count, 3);
+        assert!(schedule.next_due > 3_000 + 86_400 * 3);
+        assert_eq!(schedule.last_executed, Some(3_000 + 86_400 * 3 + 100));
+    }
 }
 
 #[test]
@@ -390,16 +415,23 @@ fn test_execute_idempotent_oneshot() {
     // First execution
     let first = client.execute_due_remittance_schedules();
     assert_eq!(first.len(), 1);
-    assert_eq!(first.get(0).unwrap(), 1);
+    let first_id = first.get(0);
+    assert!(first_id.is_some());
+    if let Some(id) = first_id {
+        assert_eq!(id, 1);
+    }
 
     // Second execution at same timestamp must be idempotent (no-op)
     let second = client.execute_due_remittance_schedules();
     assert_eq!(second.len(), 0, "Second call must be a no-op");
 
     // Verify schedule remains inactive
-    let schedule = client.get_remittance_schedule(&1).unwrap();
-    assert!(!schedule.active);
-    assert_eq!(schedule.last_executed, Some(3_500));
+    let schedule_result = client.get_remittance_schedule(&1);
+    assert!(schedule_result.is_some());
+    if let Some(schedule) = schedule_result {
+        assert!(!schedule.active);
+        assert_eq!(schedule.last_executed, Some(3_500));
+    }
 }
 
 #[test]
@@ -420,15 +452,24 @@ fn test_execute_idempotent_recurring() {
     let first = client.execute_due_remittance_schedules();
     assert_eq!(first.len(), 1);
 
-    let first_next_due = client.get_remittance_schedule(&1).unwrap().next_due;
+    let schedule_result = client.get_remittance_schedule(&1);
+    assert!(schedule_result.is_some());
+    let first_next_due = if let Some(schedule) = schedule_result {
+        schedule.next_due
+    } else {
+        panic!("Schedule not found");
+    };
 
     // Second execution at same timestamp must not re-execute
     let second = client.execute_due_remittance_schedules();
     assert_eq!(second.len(), 0);
 
     // Verify next_due unchanged (idempotent advancement)
-    let schedule = client.get_remittance_schedule(&1).unwrap();
-    assert_eq!(schedule.next_due, first_next_due);
+    let schedule_result = client.get_remittance_schedule(&1);
+    assert!(schedule_result.is_some());
+    if let Some(schedule) = schedule_result {
+        assert_eq!(schedule.next_due, first_next_due);
+    }
 }
 
 #[test]
@@ -473,9 +514,12 @@ fn test_execute_skips_not_yet_due() {
     assert_eq!(executed.len(), 0);
 
     // Verify schedule unchanged
-    let schedule = client.get_remittance_schedule(&1).unwrap();
-    assert!(schedule.active);
-    assert_eq!(schedule.last_executed, None);
+    let schedule_result = client.get_remittance_schedule(&1);
+    assert!(schedule_result.is_some());
+    if let Some(schedule) = schedule_result {
+        assert!(schedule.active);
+        assert_eq!(schedule.last_executed, None);
+    }
 }
 
 #[test]
@@ -558,9 +602,12 @@ fn test_execute_paused_contract_returns_empty() {
     assert_eq!(executed.len(), 0);
 
     // Verify schedule was NOT executed (unchanged)
-    let schedule = client.get_remittance_schedule(&1).unwrap();
-    assert!(schedule.active);
-    assert_eq!(schedule.last_executed, None);
+    let schedule_result = client.get_remittance_schedule(&1);
+    assert!(schedule_result.is_some());
+    if let Some(schedule) = schedule_result {
+        assert!(schedule.active);
+        assert_eq!(schedule.last_executed, None);
+    }
 }
 
 #[test]
@@ -584,11 +631,24 @@ fn test_execute_mixed_due_not_due() {
 
     let executed = client.execute_due_remittance_schedules();
     assert_eq!(executed.len(), 1);
-    assert_eq!(executed.get(0).unwrap(), 1);
+    let first_executed = executed.get(0);
+    assert!(first_executed.is_some());
+    if let Some(id) = first_executed {
+        assert_eq!(id, 1);
+    }
 
     // Verify only schedule 1 is inactive
-    assert!(!client.get_remittance_schedule(&1).unwrap().active);
-    assert!(client.get_remittance_schedule(&2).unwrap().active);
+    let schedule1_result = client.get_remittance_schedule(&1);
+    assert!(schedule1_result.is_some());
+    if let Some(schedule1) = schedule1_result {
+        assert!(!schedule1.active);
+    }
+
+    let schedule2_result = client.get_remittance_schedule(&2);
+    assert!(schedule2_result.is_some());
+    if let Some(schedule2) = schedule2_result {
+        assert!(schedule2.active);
+    }
 }
 
 // Helper function to invoke execute_due_remittance_schedules via client
@@ -625,12 +685,15 @@ fn test_set_pause_admin_by_owner() {
         });
     assert!(adm_xfr_event.is_some(), "adm_xfr event should be emitted");
 
-    let (_, _, data) = adm_xfr_event.unwrap();
-    let parse_result = data.try_into_val::<(Option<Address>, Address)>(&env);
-    assert!(parse_result.is_ok(), "Event data should be parseable as (Option<Address>, Address)");
-    let (old_admin, new_admin) = parse_result.unwrap();
-    assert_eq!(old_admin, None); // No previous pause admin
-    assert_eq!(new_admin, new_pause_admin);
+    if let Some(event) = adm_xfr_event {
+        let (_, _, data) = event;
+        let parse_result = data.try_into_val::<(Option<Address>, Address)>(&env);
+        assert!(parse_result.is_ok(), "Event data should be parseable as (Option<Address>, Address)");
+        if let Ok((old_admin, new_admin)) = parse_result {
+            assert_eq!(old_admin, None); // No previous pause admin
+            assert_eq!(new_admin, new_pause_admin);
+        }
+    }
 }
 
 #[test]
@@ -755,12 +818,15 @@ fn test_set_upgrade_admin_by_owner_initial() {
         ;
     assert!(adm_xfr_event.is_some(), "adm_xfr event should be emitted");
 
-    let (_, _, data) = adm_xfr_event.unwrap();
-    let parse_result = data.try_into_val::<(Option<Address>, Address)>(&env);
-    assert!(parse_result.is_ok(), "Event data should be parseable");
-    let (old_admin, new_admin) = parse_result.unwrap();
-    assert_eq!(old_admin, None); // No previous upgrade admin
-    assert_eq!(new_admin, new_upgrade_admin);
+    if let Some(event) = adm_xfr_event {
+        let (_, _, data) = event;
+        let parse_result = data.try_into_val::<(Option<Address>, Address)>(&env);
+        assert!(parse_result.is_ok(), "Event data should be parseable");
+        if let Ok((old_admin, new_admin)) = parse_result {
+            assert_eq!(old_admin, None); // No previous upgrade admin
+            assert_eq!(new_admin, new_upgrade_admin);
+        }
+    }
 }
 
 #[test]
@@ -797,9 +863,10 @@ fn test_set_upgrade_admin_by_current_admin() {
     let (_, _, data) = &adm_xfr_events[1];
     let parse_result = data.try_into_val::<(Option<Address>, Address)>(&env);
     assert!(parse_result.is_ok(), "Event data should be parseable");
-    let (old_admin, new_admin) = parse_result.unwrap();
-    assert_eq!(old_admin, Some(upgrade_admin1));
-    assert_eq!(new_admin, upgrade_admin2);
+    if let Ok((old_admin, new_admin)) = parse_result {
+        assert_eq!(old_admin, Some(upgrade_admin1));
+        assert_eq!(new_admin, upgrade_admin2);
+    }
 }
 
 #[test]
@@ -880,17 +947,19 @@ fn test_set_upgrade_admin_double_transfer() {
     let (_, _, data) = &adm_xfr_events[0];
     let parse_result = data.try_into_val::<(Option<Address>, Address)>(&env);
     assert!(parse_result.is_ok(), "Event data should be parseable");
-    let (old_admin, new_admin) = parse_result.unwrap();
-    assert_eq!(old_admin, None); // No previous upgrade admin
-    assert_eq!(new_admin, upgrade_admin1);
+    if let Ok((old_admin, new_admin)) = parse_result {
+        assert_eq!(old_admin, None); // No previous upgrade admin
+        assert_eq!(new_admin, upgrade_admin1);
+    }
 
     // Check the second event (transfer from admin1 to admin2)
     let (_, _, data) = &adm_xfr_events[1];
     let parse_result = data.try_into_val::<(Option<Address>, Address)>(&env);
     assert!(parse_result.is_ok(), "Event data should be parseable");
-    let (old_admin, new_admin) = parse_result.unwrap();
-    assert_eq!(old_admin, Some(upgrade_admin1));
-    assert_eq!(new_admin, upgrade_admin2);
+    if let Ok((old_admin, new_admin)) = parse_result {
+        assert_eq!(old_admin, Some(upgrade_admin1));
+        assert_eq!(new_admin, upgrade_admin2);
+    }
 }
 
 #[test]
