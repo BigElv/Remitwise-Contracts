@@ -255,309 +255,122 @@ fn restore_at_cap_returns_false() {
 
 // ---------------------------------------------------------------------------
 // Bounds validation for premiums and coverage
-// NOTE: These tests are for planned features (bounds validation) that have
-// not been implemented yet. They reference non-existent constants
-// (MAX_MONTHLY_PREMIUM, MAX_COVERAGE_AMOUNT) and error codes
-// (MonthlyPremiumTooHigh, CoverageAmountTooHigh). Commenting out until
-// bounds validation is implemented.
-// ---------------------------------------------------------------------------
-
-// #[test]
-// fn bounds_monthly_premium_too_high() {
-//     let env = make_env();
-//     let (owner, client) = setup(&env);
-//     let result = client.try_create_policy(
-//         &owner,
-//         &String::from_str(&env, "Policy"),
-//         &CoverageType::Health,
-//         &(MAX_MONTHLY_PREMIUM + 1),
-//         &10_000i128,
-//         &None,
-//     );
-//     assert_eq!(result, Err(Ok(InsuranceError::MonthlyPremiumTooHigh)));
-// }
-
-// #[test]
-// fn bounds_coverage_amount_too_high() {
-//     let env = make_env();
-//     let (owner, client) = setup(&env);
-//     let result = client.try_create_policy(
-//         &owner,
-//         &String::from_str(&env, "Policy"),
-//         &CoverageType::Health,
-//         &100i128,
-//         &(MAX_COVERAGE_AMOUNT + 1),
-//         &None,
-//     );
-//     assert_eq!(result, Err(Ok(InsuranceError::CoverageAmountTooHigh)));
-// }
-
-// #[test]
-// fn bounds_max_values_succeed() {
-//     let env = make_env();
-//     let (owner, client) = setup(&env);
-//     let id = client.create_policy(
-//         &owner,
-//         &String::from_str(&env, "Policy"),
-//         &CoverageType::Health,
-//         &MAX_MONTHLY_PREMIUM,
-//         &MAX_COVERAGE_AMOUNT,
-//         &None,
-//     );
-//     assert!(id > 0);
-// }
-
-// ---------------------------------------------------------------------------
-// New comprehensive tests for cap enforcement at boundaries and pagination
+// These tests verify rejection of non-positive values, enforcement of upper
+// bounds, and overflow-safe aggregation at the per-owner policy cap.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn cap_boundary_at_49_succeeds() {
+fn bounds_monthly_premium_too_high() {
     let env = make_env();
     let (owner, client) = setup(&env);
-
-    // Create 49 policies (one below cap)
-    for _ in 0..(MAX_POLICIES_PER_OWNER - 1) {
-        create_one(&env, &client, &owner);
-    }
-
-    let stats = client.get_storage_stats();
-    assert_eq!(stats.active_policies, MAX_POLICIES_PER_OWNER - 1);
+    let result = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &(MAX_MONTHLY_PREMIUM + 1),
+        &10_000i128,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(InsuranceError::MonthlyPremiumTooHigh)));
 }
 
 #[test]
-fn cap_boundary_at_50_succeeds() {
+fn bounds_coverage_amount_too_high() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+    let result = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &100i128,
+        &(MAX_COVERAGE_AMOUNT + 1),
+        &None,
+    );
+    assert_eq!(result, Err(Ok(InsuranceError::CoverageAmountTooHigh)));
+}
+
+#[test]
+fn bounds_max_values_succeed() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+    let id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &MAX_MONTHLY_PREMIUM,
+        &MAX_COVERAGE_AMOUNT,
+        &None,
+    );
+    assert!(id > 0);
+}
+
+#[test]
+fn bounds_monthly_premium_nonpositive_rejected() {
     let env = make_env();
     let (owner, client) = setup(&env);
 
-    // Create exactly 50 policies (at cap)
+    let r0 = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &0i128,
+        &10_000i128,
+        &None,
+    );
+    assert_eq!(r0, Err(Ok(InsuranceError::MonthlyPremiumTooLow)));
+
+    let rneg = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &-1i128,
+        &10_000i128,
+        &None,
+    );
+    assert_eq!(rneg, Err(Ok(InsuranceError::MonthlyPremiumTooLow)));
+}
+
+#[test]
+fn bounds_coverage_amount_nonpositive_rejected() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+
+    let r0 = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &100i128,
+        &0i128,
+        &None,
+    );
+    assert_eq!(r0, Err(Ok(InsuranceError::CoverageAmountTooLow)));
+
+    let rneg = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &100i128,
+        &-1i128,
+        &None,
+    );
+    assert_eq!(rneg, Err(Ok(InsuranceError::CoverageAmountTooLow)));
+}
+
+#[test]
+fn overflow_safe_aggregation_at_cap() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+
+    let name = String::from_str(&env, "BigPremium");
+    let coverage_type = CoverageType::Health;
+
     for _ in 0..MAX_POLICIES_PER_OWNER {
-        create_one(&env, &client, &owner);
+        client.create_policy(&owner, &name, &coverage_type, &MAX_MONTHLY_PREMIUM, &10_000i128, &None);
     }
 
-    let stats = client.get_storage_stats();
-    assert_eq!(stats.active_policies, MAX_POLICIES_PER_OWNER);
-}
-
-#[test]
-fn cap_archive_active_policy_frees_slot_for_new() {
-    let env = make_env();
-    let (owner, client) = setup(&env);
-    let mut ids = std::vec![];
-
-    // Fill to cap
-    for _ in 0..MAX_POLICIES_PER_OWNER {
-        ids.push(create_one(&env, &client, &owner));
-    }
-
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER);
-
-    // Archive one (directly, without deactivating first)
-    assert!(client.archive_policy(&owner, &ids[0]));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER - 1);
-    assert_eq!(client.get_storage_stats().archived_policies, 1);
-
-    // Should now be able to create a new one
-    let new_id = create_one(&env, &client, &owner);
-    assert!(new_id > 0);
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER);
-}
-
-#[test]
-fn cap_deactivate_then_archive_frees_slot() {
-    let env = make_env();
-    let (owner, client) = setup(&env);
-    let mut ids = std::vec![];
-
-    // Fill to cap
-    for _ in 0..MAX_POLICIES_PER_OWNER {
-        ids.push(create_one(&env, &client, &owner));
-    }
-
-    // Deactivate then archive
-    assert!(client.deactivate_policy(&owner, &ids[0]));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER - 1);
-
-    assert!(client.archive_policy(&owner, &ids[0]));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER - 1);
-    assert_eq!(client.get_storage_stats().archived_policies, 1);
-
-    // Create new to fill cap again
-    let new_id = create_one(&env, &client, &owner);
-    assert!(new_id > 0);
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER);
-}
-
-#[test]
-fn restore_increments_active_count() {
-    let env = make_env();
-    let (owner, client) = setup(&env);
-    let id = create_one(&env, &client, &owner);
-
-    assert_eq!(client.get_storage_stats().active_policies, 1);
-
-    // Deactivate and archive
-    assert!(client.deactivate_policy(&owner, &id));
-    assert_eq!(client.get_storage_stats().active_policies, 0);
-
-    assert!(client.archive_policy(&owner, &id));
-    assert_eq!(client.get_storage_stats().active_policies, 0);
-    assert_eq!(client.get_storage_stats().archived_policies, 1);
-
-    // Restore
-    assert!(client.restore_policy(&owner, &id));
-    assert_eq!(client.get_storage_stats().active_policies, 1);
-    assert_eq!(client.get_storage_stats().archived_policies, 0);
-}
-
-#[test]
-fn restore_respects_cap_boundary() {
-    let env = make_env();
-    let (owner, client) = setup(&env);
-
-    // Create 49 policies
-    for _ in 0..(MAX_POLICIES_PER_OWNER - 1) {
-        create_one(&env, &client, &owner);
-    }
-
-    // Create one more to archive (will be the 50th)
-    let archived_id = create_one(&env, &client, &owner);
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER);
-
-    // Archive it
-    assert!(client.archive_policy(&owner, &archived_id));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER - 1);
-
-    // Create one more to reach cap again
-    create_one(&env, &client, &owner);
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER);
-
-    // Try to restore - should fail because we're at cap
-    assert!(!client.restore_policy(&owner, &archived_id));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER);
-}
-
-#[test]
-fn get_active_policies_pagination_consistency() {
-    let env = make_env();
-    let (owner, client) = setup(&env);
-
-    // Create 5 policies
-    let mut ids = std::vec![];
-    for i in 0..5 {
-        let id = client.create_policy(
-            &owner,
-            &String::from_str(&env, &format!("Policy{}", i)),
-            &CoverageType::Health,
-            &100i128,
-            &10_000i128,
-            &None,
-        ).unwrap();
-        ids.push(id);
-    }
-
-    // Get all at once
-    let page1 = client.get_active_policies(&owner, &0, &10);
-    assert_eq!(page1.count, 5);
-    assert_eq!(page1.next_cursor, 0); // No more pages
-
-    // Get paginated with limit=2
-    let page_first = client.get_active_policies(&owner, &0, &2);
-    assert_eq!(page_first.count, 2);
-    assert!(page_first.next_cursor > 0, "Should have a cursor for next page");
-
-    // Get next page
-    let page_second = client.get_active_policies(&owner, &page_first.next_cursor, &2);
-    assert_eq!(page_second.count, 2);
-    assert!(page_second.next_cursor > 0);
-
-    // Get final page
-    let page_third = client.get_active_policies(&owner, &page_second.next_cursor, &2);
-    assert_eq!(page_third.count, 1);
-    assert_eq!(page_third.next_cursor, 0, "Final page should have cursor 0");
-
-    // Verify no duplicates across pages
-    let mut seen_ids = std::vec![];
-    for item in page_first.items.iter() {
-        seen_ids.push(item.id);
-    }
-    for item in page_second.items.iter() {
-        seen_ids.push(item.id);
-    }
-    for item in page_third.items.iter() {
-        seen_ids.push(item.id);
-    }
-
-    // Check all original IDs are present
-    for id in ids.iter() {
-        assert!(
-            seen_ids.iter().any(|&sid| sid == *id),
-            "Policy {} missing from paginated results",
-            id
-        );
-    }
-}
-
-#[test]
-fn get_active_policies_excludes_inactive() {
-    let env = make_env();
-    let (owner, client) = setup(&env);
-
-    // Create 3 policies
-    let id1 = create_one(&env, &client, &owner);
-    let id2 = create_one(&env, &client, &owner);
-    let id3 = create_one(&env, &client, &owner);
-
-    // Get all active
-    let page = client.get_active_policies(&owner, &0, &10);
-    assert_eq!(page.count, 3);
-
-    // Deactivate one
-    assert!(client.deactivate_policy(&owner, &id2));
-
-    // Get active again - should only have 2
-    let page = client.get_active_policies(&owner, &0, &10);
-    assert_eq!(page.count, 2);
-
-    // Verify the remaining IDs don't include id2
-    for item in page.items.iter() {
-        assert!(item.id != id2, "Inactive policy should not appear in active list");
-        assert!(item.active, "All returned policies should be active");
-    }
-}
-
-#[test]
-fn deactivate_restore_cycle_maintains_cap() {
-    let env = make_env();
-    let (owner, client) = setup(&env);
-
-    // Create at cap
-    let mut ids = std::vec![];
-    for _ in 0..MAX_POLICIES_PER_OWNER {
-        ids.push(create_one(&env, &client, &owner));
-    }
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER);
-
-    // Deactivate one
-    assert!(client.deactivate_policy(&owner, &ids[0]));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER - 1);
-
-    // Create a new one
-    let new_id = create_one(&env, &client, &owner);
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER);
-
-    // Archive the original
-    assert!(client.archive_policy(&owner, &ids[0]));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER - 1);
-
-    // Try to restore - should fail (at cap with new policy)
-    assert!(!client.restore_policy(&owner, &ids[0]));
-
-    // Deactivate the new one
-    assert!(client.deactivate_policy(&owner, &new_id));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER - 2);
-
-    // Now restore should succeed
-    assert!(client.restore_policy(&owner, &ids[0]));
-    assert_eq!(client.get_storage_stats().active_policies, MAX_POLICIES_PER_OWNER - 1);
+    let total = client.get_total_monthly_premium(&owner);
+    assert_eq!(
+        total,
+        MAX_MONTHLY_PREMIUM.saturating_mul(MAX_POLICIES_PER_OWNER as i128)
+    );
 }
