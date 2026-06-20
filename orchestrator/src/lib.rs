@@ -7,6 +7,7 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+#[allow(dead_code)]
 mod interface {
     use soroban_sdk::{contractclient, Address, Env, Vec};
 
