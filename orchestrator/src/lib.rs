@@ -580,8 +580,8 @@ impl Orchestrator {
 
     /// Hardened nonce validation:
     /// 1. Deadline must be in the future and within `MAX_DEADLINE_WINDOW_SECS`
-    /// 2. Sequential counter check
-    /// 3. Used-nonce double-spend check
+    /// 2. Used-nonce double-spend check
+    /// 3. Sequential counter check
     /// 4. Request hash binding
     fn require_nonce_hardened(
         env: &Env,
@@ -600,11 +600,11 @@ impl Orchestrator {
             return Err(OrchestratorError::DeadlineExpired);
         }
 
-        Self::require_nonce(env, address, nonce)?;
-
         if Self::is_nonce_used(env, address, nonce) {
             return Err(OrchestratorError::NonceAlreadyUsed);
         }
+
+        Self::require_nonce(env, address, nonce)?;
 
         if request_hash != expected_hash {
             return Err(OrchestratorError::InvalidNonce);
@@ -877,7 +877,7 @@ mod tests_nonce_eviction {
     }
 
     #[test]
-    fn signed_flow_replay_and_old_nonce_use_sequential_counter() {
+    fn signed_flow_replay_uses_used_set_and_old_nonce_uses_sequential_counter() {
         let harness = setup_signed_flow();
         let client = client(&harness);
         let executor = Address::generate(&harness.env);
@@ -894,7 +894,7 @@ mod tests_nonce_eviction {
             &deadline,
             &replay_hash,
         );
-        assert_eq!(replay, Err(Ok(OrchestratorError::InvalidNonce)));
+        assert_eq!(replay, Err(Ok(OrchestratorError::NonceAlreadyUsed)));
 
         let skipped_hash = request_hash(&executor, FLOW_AMOUNT, 3, deadline);
         let skipped = client.try_execute_remittance_flow_signed(
