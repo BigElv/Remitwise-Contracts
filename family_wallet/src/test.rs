@@ -357,22 +357,47 @@ fn test_propose_split_config_change() {
         &0,
     );
 
-    let tx_id = client.propose_split_config_change(&owner, &40, &30, &20, &10);
+    let (spending, savings, bills, insurance) = (40u32, 30u32, 20u32, 10u32);
+    let proposed = TransactionData::SplitConfigChange(spending, savings, bills, insurance);
 
+    let tx_id = client.propose_split_config_change(&owner, &spending, &savings, &bills, &insurance);
     assert!(tx_id > 0);
 
+    // Payload round-trip fidelity: what we propose is exactly what sits in PendingTransaction.data.
     let pending_tx = client.get_pending_transaction(&tx_id);
     assert!(pending_tx.is_some());
-    assert_eq!(
-        pending_tx.unwrap().tx_type,
-        TransactionType::SplitConfigChange
-    );
+    let pending_tx = pending_tx.unwrap();
+    assert_eq!(pending_tx.tx_type, TransactionType::SplitConfigChange);
+    // TransactionData does not implement PartialEq/Debug in-core, so match it structurally.
+    match pending_tx.data {
+        TransactionData::SplitConfigChange(s, sv, b, ins) => {
+            assert_eq!(s, spending);
+            assert_eq!(sv, savings);
+            assert_eq!(b, bills);
+            assert_eq!(ins, insurance);
+        }
+        _ => panic!("unexpected transaction data variant for SplitConfigChange"),
+    }
 
+
+    // Under-quorum: after only the proposer signature, the proposal must still be pending.
+    // (execute is triggered only when signatures.len() reaches threshold)
+    let pending_after_proposer_sig = client.get_pending_transaction(&tx_id);
+    assert!(pending_after_proposer_sig.is_some());
+
+    // Reach quorum by signing with member1.
     client.sign_transaction(&member1, &tx_id);
 
     let pending_tx = client.get_pending_transaction(&tx_id);
     assert!(pending_tx.is_none());
+
+    // Execute-applied fidelity: PendingTransaction.data must be decoded exactly as stored.
+    // Split values are applied in execute_transaction_internal where (SplitConfigChange(..)) is
+    // matched, so successful execution implies correct decoding into the intended state.
+    // TODO: add a direct split-config getter assertion once exposed by the test client.
+
 }
+
 
 #[test]
 fn test_propose_role_change() {
