@@ -22,6 +22,7 @@ pub struct GoalCreatedEvent {
     pub name: String,
     pub target_amount: i128,
     pub target_date: u64,
+    pub locked: bool,
     pub timestamp: u64,
 }
 
@@ -779,21 +780,18 @@ impl SavingsGoalContract {
 
     /// Creates a new savings goal.
     ///
+    /// New goals default to `locked: false` (immediately usable).
+    /// Pass `locked: true` explicitly for commitment-device goals.
+    ///
     /// - `owner` must authorize the call.
     /// - `target_amount` must be positive.
-    /// - `target_date` is stored as provided and may be in the past. This
-    ///   supports backfill or migration use cases where historical goals are
-    ///   recorded after the fact. Callers that need strictly future-dated
-    ///   goals should validate this before invoking the contract.
-    ///
-    /// # Events
-    /// - Emits `SavingsEvent::GoalCreated`.
     pub fn create_goal(
         env: Env,
         owner: Address,
         name: String,
         target_amount: i128,
         target_date: u64,
+        locked: bool, // new parameter - default false from callers
     ) -> Result<u32, SavingsGoalError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_GOAL);
@@ -836,7 +834,7 @@ impl SavingsGoalContract {
             target_amount,
             current_amount: 0,
             target_date,
-            locked: true,
+            locked, // use the parameter (defaults to false)
             unlock_date: None,
             tags: Vec::new(&env),
         };
@@ -863,6 +861,7 @@ impl SavingsGoalContract {
             name: goal.name.clone(),
             target_amount,
             target_date,
+            locked,
             timestamp: env.ledger().timestamp(),
         };
         env.events().publish((GOAL_CREATED,), event.clone());
@@ -887,7 +886,6 @@ impl SavingsGoalContract {
 
         Ok(new_id)
     }
-
     /// Adds funds to an existing savings goal.
     ///
     /// # Arguments
@@ -2310,12 +2308,7 @@ impl SavingsGoalContract {
             // Active iff unlock_date is strictly in the future.
             if prev_unlock > current_time {
                 if unlock_date < prev_unlock {
-                    Self::append_audit(
-                        &env,
-                        symbol_short!("timelock"),
-                        &caller,
-                        false,
-                    );
+                    Self::append_audit(&env, symbol_short!("timelock"), &caller, false);
                     soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
                 }
             }
@@ -2324,7 +2317,6 @@ impl SavingsGoalContract {
         // Even if there is an active time-lock, extending to the same value
         // (`new_unlock == prev_unlock`) is accepted and treated as a no-op.
         // Any other extension (`new_unlock > prev_unlock`) updates the lock.
-        
 
         // new_unlock == prev_unlock => accepted no-op.
         goal.unlock_date = Some(unlock_date);

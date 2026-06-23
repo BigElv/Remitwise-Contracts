@@ -173,7 +173,10 @@ pub struct Orchestrator;
 impl Orchestrator {
     /// Executes the full remittance flow across multiple contracts.
     /// This is protected against reentrancy.
-    pub fn execute_remittance_flow(env: Env, params: RemittanceFlowParams) -> Result<(), OrchestratorError> {
+    pub fn execute_remittance_flow(
+        env: Env,
+        params: RemittanceFlowParams,
+    ) -> Result<(), OrchestratorError> {
         params.caller.require_auth();
 
         if params.total_amount <= 0 {
@@ -196,7 +199,10 @@ impl Orchestrator {
         result
     }
 
-    fn perform_remittance_flow(env: &Env, params: &RemittanceFlowParams) -> Result<(), OrchestratorError> {
+    fn perform_remittance_flow(
+        env: &Env,
+        params: &RemittanceFlowParams,
+    ) -> Result<(), OrchestratorError> {
         // Use interfaces to call downstream contracts
         // This is a simplified implementation of the flow logic
         // 1. Check permission/spending limit
@@ -530,10 +536,10 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("VERSION"), &new_version);
 
-                // Emit orchestrator upgrade event
-                // Topic: ("orch", "upgraded")
-                // Payload: (previous_version: u32, new_version: u32)
-                // Emitted when the contract version is upgraded by the owner
+        // Emit orchestrator upgrade event
+        // Topic: ("orch", "upgraded")
+        // Payload: (previous_version: u32, new_version: u32)
+        // Emitted when the contract version is upgraded by the owner
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("upgraded")),
             (prev, new_version),

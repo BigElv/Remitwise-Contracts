@@ -182,23 +182,22 @@ fn init_orchestrator(env: &Env, client: &OrchestratorClient, owner: &Address) {
 fn do_flow(env: &Env, client: &OrchestratorClient, executor: &Address, _nonce: u64) {
     let mock_id = env.register_contract(None, MockContract);
     env.budget().reset_unlimited();
-        client.execute_remittance_flow(&RemittanceFlowParams {
-            caller: executor.clone(),
-            total_amount: 1000i128,
-            family_wallet: mock_id.clone(),
-            remittance_split: mock_id.clone(),
-            savings: mock_id.clone(),
-            bills: mock_id.clone(),
-            insurance: mock_id.clone(),
-            goal_id: 1,
-            bill_id: 1,
-            policy_id: 1,
-        });
+    client.execute_remittance_flow(&RemittanceFlowParams {
+        caller: executor.clone(),
+        total_amount: 1000i128,
+        family_wallet: mock_id.clone(),
+        remittance_split: mock_id.clone(),
+        savings: mock_id.clone(),
+        bills: mock_id.clone(),
+        insurance: mock_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    });
 }
 
 /// Mirror of `Orchestrator::compute_request_hash` for test use.
 fn compute_test_hash(
-
     _env: &Env,
     operation: Symbol,
     nonce: u64,
@@ -791,8 +790,7 @@ fn test_signed_deadline_at_window_edge_accepted() {
     let deadline = now + MAX_DEADLINE_WINDOW_SECS; // exactly at the edge
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-    let result =
-        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
 
     assert_eq!(
         result,
@@ -818,8 +816,7 @@ fn test_signed_deadline_one_past_window_rejected() {
     let deadline = now + MAX_DEADLINE_WINDOW_SECS + 1; // one second too far
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-    let result =
-        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
 
     assert_eq!(
         result,
@@ -844,8 +841,7 @@ fn test_signed_deadline_in_past_rejected() {
     let deadline = now - 1; // strictly in the past
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-    let result =
-        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
 
     assert_eq!(
         result,
@@ -874,8 +870,7 @@ fn test_signed_in_window_replay_with_used_nonce_rejected() {
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
     // First call succeeds and consumes nonce 0.
-    let first =
-        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let first = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
     assert_eq!(first, Ok(Ok(true)));
     assert_eq!(client.get_nonce(&executor), 1);
 
@@ -1107,8 +1102,7 @@ fn test_signed_deadline_rejected_does_not_mutate_stats() {
     let now = env.ledger().timestamp();
     let deadline = now + MAX_DEADLINE_WINDOW_SECS + 1;
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
-    let result =
-        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
     assert_eq!(result, Err(Ok(OrchestratorError::DeadlineExpired)));
 
     let after = client.get_execution_stats().unwrap();
