@@ -1310,7 +1310,7 @@ impl BillPayments {
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
             // Update unpaid total for the new recurring bill
-            Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
+            Self::adjust_unpaid_total(&env, &caller, next_bill.amount);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, next_due_date),
